@@ -25,16 +25,15 @@
 
 #include <ode/common.h>
 
-class dxWorldProcessMemArena;
+struct dxStepperProcessingCallContext;
 
 
-size_t dxEstimateStepMemoryRequirements (
-  dxBody * const *body, unsigned int nb, dxJoint * const *_joint, unsigned int _nj);
+sizeint dxEstimateStepMemoryRequirements(
+    dxBody * const *body, unsigned int nb, dxJoint * const *_joint, unsigned int _nj);
+unsigned dxEstimateStepMaxCallCount(
+    unsigned activeThreadCount, unsigned allowedThreadCount);
 
-void dInternalStepIsland (dxWorldProcessMemArena *memarena, dxWorld *world,
-			  dxBody * const *body, unsigned int nb,
-			  dxJoint * const *joint, unsigned int nj,
-			  dReal stepsize);
+void dxStepIsland(const dxStepperProcessingCallContext *callContext);
 
 
 

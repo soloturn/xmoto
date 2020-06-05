@@ -1,7 +1,7 @@
 /*************************************************************************
 *                                                                       *
 * OU library interface file for Open Dynamics Engine,                   *
-* Copyright (C) 2008 Oleh Derevenko. All rights reserved.               *
+* Copyright (C) 2008-2019 Oleh Derevenko. All rights reserved.          *
 * Email: odar@eleks.com (change all "a" to "e")                         *
 *                                                                       *
 * Open Dynamics Engine, Copyright (C) 2001,2002 Russell L. Smith.       *
@@ -56,23 +56,52 @@ ODE interface to OU library functions.
 #endif
 
 
-using namespace _OU_NAMESPACE;
+using _OU_NAMESPACE::CEnumUnsortedElementArray;
+using _OU_NAMESPACE::CEnumSortedElementArray;
+
+#if dATOMICS_ENABLED
+using _OU_NAMESPACE::atomicord32;
+using _OU_NAMESPACE::atomicptr;
+using _OU_NAMESPACE::InitializeAtomicAPI;
+using _OU_NAMESPACE::FinalizeAtomicAPI;
+using _OU_NAMESPACE::AtomicIncrement;
+using _OU_NAMESPACE::AtomicDecrement;
+using _OU_NAMESPACE::AtomicCompareExchange;
+using _OU_NAMESPACE::AtomicExchange;
+using _OU_NAMESPACE::AtomicExchangeAddNoResult;
+using _OU_NAMESPACE::AtomicExchangeAdd;
+using _OU_NAMESPACE::AtomicCompareExchangePointer;
+using _OU_NAMESPACE::AtomicExchangePointer;
+using _OU_NAMESPACE::AtomicReadReorderBarrier;
+using _OU_NAMESPACE::AtomicStore;
+using _OU_NAMESPACE::AtomicStorePointer;
+#endif
 
 
 class COdeOu
 {
 public:
-	static bool DoOUCustomizations();
-	static void UndoOUCustomizations();
+    static bool DoOUCustomizations();
+    static void UndoOUCustomizations();
 
 #if dATOMICS_ENABLED
-	static bool InitializeAtomics() { return InitializeAtomicAPI(); }
-	static void FinalizeAtomics() { FinalizeAtomicAPI(); }
+    static bool InitializeAtomics() { return InitializeAtomicAPI(); }
+    static void FinalizeAtomics() { FinalizeAtomicAPI(); }
 #endif
 };
 
 
+#endif 
+
+
+#if !dOU_ENABLED || !dATOMICS_ENABLED
+
+typedef unsigned int atomicord32;
+typedef void *atomicptr;
+
+
 #endif // dOU_ENABLED
+
 
 
 #endif // _ODE_ODEOU_H_

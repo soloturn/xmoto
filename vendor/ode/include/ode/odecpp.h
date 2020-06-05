@@ -1,23 +1,23 @@
 /*************************************************************************
- *									 *
- * Open Dynamics Engine, Copyright (C) 2001, 2002 Russell L. Smith.	 *
- * All rights reserved.  Email: russ@q12.org   Web: www.q12.org 	 *
- *									 *
- * This library is free software; you can redistribute it and/or	 *
- * modify it under the terms of EITHER: 				 *
+ *                                                                       *
+ * Open Dynamics Engine, Copyright (C) 2001,2002 Russell L. Smith.       *
+ * All rights reserved.  Email: russ@q12.org   Web: www.q12.org          *
+ *                                                                       *
+ * This library is free software; you can redistribute it and/or         *
+ * modify it under the terms of EITHER:                                  *
  *   (1) The GNU Lesser General Public License as published by the Free  *
- *	 Software Foundation; either version 2.1 of the License, or (at  *
- *	 your option) any later version. The text of the GNU Lesser	 *
- *	 General Public License is included with this library in the	 *
- *	 file LICENSE.TXT.						 *
- *   (2) The BSD-style license that is included with this library in	 *
- *	 the file LICENSE-BSD.TXT.					 *
- *									 *
- * This library is distributed in the hope that it will be useful, 	 *
- * but WITHOUT ANY WARRANTY; without even the implied warranty of	 *
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the files	 *
- * LICENSE.TXT and LICENSE-BSD.TXT for more details.			 *
- *									 *
+ *       Software Foundation; either version 2.1 of the License, or (at  *
+ *       your option) any later version. The text of the GNU Lesser      *
+ *       General Public License is included with this library in the     *
+ *       file LICENSE.TXT.                                               *
+ *   (2) The BSD-style license that is included with this library in     *
+ *       the file LICENSE-BSD.TXT.                                       *
+ *                                                                       *
+ * This library is distributed in the hope that it will be useful,       *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the files    *
+ * LICENSE.TXT and LICENSE-BSD.TXT for more details.                     *
+ *                                                                       *
  *************************************************************************/
 
 /* C++ interface for non-collision stuff */
@@ -831,14 +831,16 @@ public:
     { dJointSetHinge2Anchor (get_id(), x, y, z); }
   void setAnchor (const dVector3 a)
     { setAnchor(a[0], a[1], a[2]); }
-  void setAxis1 (dReal x, dReal y, dReal z)
-    { dJointSetHinge2Axis1 (get_id(), x, y, z); }
-  void setAxis1 (const dVector3 a)
-    { setAxis1 (a[0], a[1], a[2]); }
-  void setAxis2 (dReal x, dReal y, dReal z)
-    { dJointSetHinge2Axis2 (get_id(), x, y, z); }
-  void setAxis2 (const dVector3 a)
-    { setAxis2 (a[0], a[1], a[2]); }
+  void setAxes (const dReal *axis1/*=NULL*/, const dReal *axis2/*=NULL*/)
+    {  dJointSetHinge2Axes (get_id(), axis1, axis2); }
+  ODE_API_DEPRECATED void setAxis1 (dReal x, dReal y, dReal z)
+    { dVector3 a = { x, y, z }; dJointSetHinge2Axes (get_id(), a, NULL); }
+  ODE_API_DEPRECATED void setAxis1 (const dVector3 a)
+    { dJointSetHinge2Axes (get_id(), a, NULL); }
+  ODE_API_DEPRECATED void setAxis2 (dReal x, dReal y, dReal z)
+    { dVector3 a = { x, y, z }; dJointSetHinge2Axes (get_id(), NULL, a); }
+  ODE_API_DEPRECATED void setAxis2 (const dVector3 a)
+    { dJointSetHinge2Axes (get_id(), NULL, a); }
     
   void getAnchor (dVector3 result) const
     { dJointGetHinge2Anchor (get_id(), result); }

@@ -21,7 +21,8 @@
  *************************************************************************/
 
 
-#include "../config.h"
+#include <ode/odeconfig.h>
+#include "config.h"
 #include "null.h"
 #include "joint_internal.h"
 
@@ -30,7 +31,7 @@
 //****************************************************************************
 // null joint
 dxJointNull::dxJointNull( dxWorld *w ) :
-        dxJoint( w )
+    dxJoint( w )
 {
 }
 
@@ -50,7 +51,10 @@ dxJointNull::getInfo1( dxJoint::Info1 *info )
 
 
 void
-dxJointNull::getInfo2( dxJoint::Info2 *info )
+dxJointNull::getInfo2( dReal /*worldFPS*/, dReal /*worldERP*/, 
+    int rowskip, dReal *J1, dReal *J2,
+    int pairskip, dReal *pairRhsCfm, dReal *pairLoHi, 
+    int *findex )
 {
     dDebug( 0, "this should never get called" );
 }
@@ -61,7 +65,7 @@ dxJointNull::type() const
     return dJointTypeNull;
 }
 
-size_t
+sizeint
 dxJointNull::size() const
 {
     return sizeof( *this );

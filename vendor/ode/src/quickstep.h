@@ -25,15 +25,15 @@
 
 #include <ode/common.h>
 
-class dxWorldProcessMemArena;
+struct dxStepperProcessingCallContext;
 
 
-size_t dxEstimateQuickStepMemoryRequirements (
-  dxBody * const *body, unsigned int nb, dxJoint * const *_joint, unsigned int _nj);
+sizeint dxEstimateQuickStepMemoryRequirements(
+    dxBody * const *body, unsigned int nb, dxJoint * const *_joint, unsigned int _nj);
+unsigned dxEstimateQuickStepMaxCallCount(
+    unsigned activeThreadCount, unsigned allowedThreadCount);
 
-void dxQuickStepper (dxWorldProcessMemArena *memarena,
-        dxWorld *world, dxBody * const *body, unsigned int nb,
-		    dxJoint * const *_joint, unsigned int _nj, dReal stepsize);
+void dxQuickStepIsland(const dxStepperProcessingCallContext *callContext);
 
 
 #endif

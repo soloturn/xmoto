@@ -28,7 +28,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include "xmscene/Camera.h"
 #include "xmscene/Level.h"
 #include <sstream>
-#include <string>
 
 SceneEvent::SceneEvent(int p_eventTime) {
   m_eventTime = p_eventTime;
@@ -1074,7 +1073,7 @@ GameEventType MGE_SetPlayerPosition::getType() {
 }
 
 std::string MGE_SetPlayerPosition::toString() {
-  return "Teleportation of the player " + std::to_string(m_player);
+  return "Teleportation of the player " + m_player;
 }
 
 //////////////////////////////
@@ -2127,7 +2126,7 @@ GameEventType MGE_AddForceToPlayer::getType() {
 }
 
 std::string MGE_AddForceToPlayer::toString() {
-  return "Add force to the player " + std::to_string(m_player);
+  return "Add force to the player " + m_player;
 }
 
 //////////////////////////////

@@ -21,7 +21,8 @@
  *************************************************************************/
 
 
-#include "../config.h"
+#include <ode/odeconfig.h>
+#include "config.h"
 #include "slider.h"
 #include "joint_internal.h"
 
@@ -31,7 +32,7 @@
 // slider
 
 dxJointSlider::dxJointSlider ( dxWorld *w ) :
-        dxJoint ( w )
+    dxJoint ( w )
 {
     dSetZero ( axis1, 4 );
     axis1[0] = 1;
@@ -57,8 +58,8 @@ dReal dJointGetSliderPosition ( dJointID j )
         dMultiply0_331 ( q, joint->node[1].body->posr.R, joint->offset );
         for ( int i = 0; i < 3; i++ )
             q[i] = joint->node[0].body->posr.pos[i]
-                   - q[i]
-                   - joint->node[1].body->posr.pos[i];
+                - q[i]
+                - joint->node[1].body->posr.pos[i];
     }
     else
     {
@@ -94,7 +95,7 @@ dReal dJointGetSliderPositionRate ( dJointID j )
     if ( joint->node[1].body )
     {
         return dCalcVectorDot3 ( ax1, joint->node[0].body->lvel ) -
-               dCalcVectorDot3 ( ax1, joint->node[1].body->lvel );
+            dCalcVectorDot3 ( ax1, joint->node[1].body->lvel );
     }
     else
     {
@@ -108,7 +109,7 @@ dReal dJointGetSliderPositionRate ( dJointID j )
 void 
 dxJointSlider::getSureMaxInfo( SureMaxInfo* info )
 {
-  info->max_m = 6;
+    info->max_m = 6;
 }
 
 
@@ -125,7 +126,7 @@ dxJointSlider::getInfo1 ( dxJoint::Info1 *info )
     // see if we're at a joint limit.
     limot.limit = 0;
     if ( ( limot.lostop > -dInfinity || limot.histop < dInfinity ) &&
-            limot.lostop <= limot.histop )
+        limot.lostop <= limot.histop )
     {
         // measure joint position
         dReal pos = dJointGetSliderPosition ( this );
@@ -146,84 +147,106 @@ dxJointSlider::getInfo1 ( dxJoint::Info1 *info )
 
 
 void
-dxJointSlider::getInfo2 ( dxJoint::Info2 *info )
+dxJointSlider::getInfo2 ( dReal worldFPS, dReal worldERP, 
+    int rowskip, dReal *J1, dReal *J2,
+    int pairskip, dReal *pairRhsCfm, dReal *pairLoHi, 
+    int *findex )
 {
-    int i, s = info->rowskip;
-    int s3 = 3 * s, s4 = 4 * s;
+    // 3 rows to make body rotations equal
+    setFixedOrientation ( this, worldFPS, worldERP, rowskip, J1, J2, pairskip, pairRhsCfm, qrel );
 
     // pull out pos and R for both bodies. also get the `connection'
     // vector pos2-pos1.
-
-    dReal *pos1, *pos2, *R1, *R2;
     dVector3 c;
-    pos1 = node[0].body->posr.pos;
-    R1 = node[0].body->posr.R;
-    if ( node[1].body )
-    {
-        pos2 = node[1].body->posr.pos;
-        R2 = node[1].body->posr.R;
-        for ( i = 0; i < 3; i++ )
-            c[i] = pos2[i] - pos1[i];
-    }
-    else
-    {
-        pos2 = 0;
-        R2 = 0;
-    }
+    dReal *pos2 = NULL, *R2 = NULL;
 
-    // 3 rows to make body rotations equal
-    setFixedOrientation ( this, info, qrel, 0 );
-
-    // remaining two rows. we want: vel2 = vel1 + w1 x c ... but this would
-    // result in three equations, so we project along the planespace vectors
-    // so that sliding along the slider axis is disregarded. for symmetry we
-    // also substitute (w1+w2)/2 for w1, as w1 is supposed to equal w2.
+    dReal *pos1 = node[0].body->posr.pos;
+    dReal *R1 = node[0].body->posr.R;
 
     dVector3 ax1; // joint axis in global coordinates (unit length)
     dVector3 p, q; // plane space of ax1
     dMultiply0_331 ( ax1, R1, axis1 );
     dPlaneSpace ( ax1, p, q );
-    if ( node[1].body )
+
+    dxBody *body1 = node[1].body;
+    
+    if ( body1 )
     {
-        dVector3 tmp;
-        dCalcVectorCross3( tmp, c, p );
-        dScaleVector3( tmp, REAL( 0.5 ));
-        for ( i = 0; i < 3; i++ ) info->J1a[s3+i] = tmp[i];
-        for ( i = 0; i < 3; i++ ) info->J2a[s3+i] = tmp[i];
-        dCalcVectorCross3( tmp, c, q );
-        dScaleVector3( tmp, REAL( 0.5 ));
-        for ( i = 0; i < 3; i++ ) info->J1a[s4+i] = tmp[i];
-        for ( i = 0; i < 3; i++ ) info->J2a[s4+i] = tmp[i];
-        for ( i = 0; i < 3; i++ ) info->J2l[s3+i] = -p[i];
-        for ( i = 0; i < 3; i++ ) info->J2l[s4+i] = -q[i];
+        R2 = body1->posr.R;
+        pos2 = body1->posr.pos;
+        dSubtractVectors3( c, pos2, pos1 );
     }
-    for ( i = 0; i < 3; i++ ) info->J1l[s3+i] = p[i];
-    for ( i = 0; i < 3; i++ ) info->J1l[s4+i] = q[i];
+
+    // remaining two rows. we want: vel2 = vel1 + w1 x c ... but this would
+    // result in three equations, so we project along the planespace vectors
+    // so that sliding along the slider axis is disregarded. for symmetry we
+    // also substitute (w1+w2)/2 for w1, as w1 is supposed to equal w2.
+    int currRowSkip = 3 * rowskip, currPairSkip = 3 * pairskip;
+    {
+        dCopyVector3( J1 + currRowSkip + GI2__JL_MIN, p );
+
+        if ( body1 )
+        {
+            dVector3 tmp;
+
+            dCopyNegatedVector3(J2 + currRowSkip + GI2__JL_MIN, p);
+
+            dCalcVectorCross3( tmp, c, p );
+            dCopyScaledVector3( J1 + currRowSkip + GI2__JA_MIN, tmp, REAL(0.5) );
+            dCopyVector3( J2 + currRowSkip + GI2__JA_MIN, J1 + currRowSkip + GI2__JA_MIN );
+        }
+    }
+
+    currRowSkip += rowskip;
+    {
+        dCopyVector3( J1 + currRowSkip + GI2__JL_MIN, q );
+
+        if ( body1 )
+        {
+            dVector3 tmp;
+
+            dCopyNegatedVector3(J2 + currRowSkip + GI2__JL_MIN, q);
+
+            dCalcVectorCross3( tmp, c, q );
+            dCopyScaledVector3( J1 + currRowSkip + GI2__JA_MIN, tmp, REAL(0.5) );
+            dCopyVector3( J2 + currRowSkip + GI2__JA_MIN, J1 + currRowSkip + GI2__JA_MIN );
+        }
+    }
 
     // compute last two elements of right hand side. we want to align the offset
     // point (in body 2's frame) with the center of body 1.
-    dReal k = info->fps * info->erp;
-    if ( node[1].body )
+    dReal k = worldFPS * worldERP;
+
+    if ( body1 )
     {
         dVector3 ofs;  // offset point in global coordinates
         dMultiply0_331 ( ofs, R2, offset );
-        for ( i = 0; i < 3; i++ ) c[i] += ofs[i];
-        info->c[3] = k * dCalcVectorDot3 ( p, c );
-        info->c[4] = k * dCalcVectorDot3 ( q, c );
+        dAddVectors3(c, c, ofs);
+        
+        pairRhsCfm[currPairSkip + GI2_RHS] = k * dCalcVectorDot3 ( p, c );
+
+        currPairSkip += pairskip;
+        pairRhsCfm[currPairSkip + GI2_RHS] = k * dCalcVectorDot3 ( q, c );
     }
     else
     {
         dVector3 ofs;  // offset point in global coordinates
-        for ( i = 0; i < 3; i++ ) ofs[i] = offset[i] - pos1[i];
-        info->c[3] = k * dCalcVectorDot3 ( p, ofs );
-        info->c[4] = k * dCalcVectorDot3 ( q, ofs );
+        dSubtractVectors3(ofs, offset, pos1);
+        
+        pairRhsCfm[currPairSkip + GI2_RHS] = k * dCalcVectorDot3 ( p, ofs );
+        
+        currPairSkip += pairskip;
+        pairRhsCfm[currPairSkip + GI2_RHS] = k * dCalcVectorDot3 ( q, ofs );
 
-        if ( flags & dJOINT_REVERSE )
-            for ( i = 0; i < 3; ++i ) ax1[i] = -ax1[i];
+        if ( (flags & dJOINT_REVERSE) != 0 )
+        {
+            dNegateVector3(ax1);
+        }
     }
 
     // if the slider is powered, or has joint limits, add in the extra row
-    limot.addLimot ( this, info, 5, ax1, 0 );
+    currRowSkip += rowskip; currPairSkip += pairskip;
+    limot.addLimot ( this, worldFPS, J1 + currRowSkip, J2 + currRowSkip, pairRhsCfm + currPairSkip, pairLoHi + currPairSkip, ax1, 0 );
 }
 
 
@@ -299,7 +322,7 @@ void dJointAddSliderForce ( dJointID j, dReal force )
     checktype ( joint, Slider );
 
     if ( joint->flags & dJOINT_REVERSE )
-        force -= force;
+        force = -force;
 
     getAxis ( joint, axis, joint->axis1 );
     axis[0] *= force;
@@ -338,7 +361,7 @@ dxJointSlider::type() const
 }
 
 
-size_t
+sizeint
 dxJointSlider::size() const
 {
     return sizeof ( *this );

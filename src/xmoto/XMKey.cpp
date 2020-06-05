@@ -96,7 +96,7 @@ XMKey::XMKey(std::string *i_joyId, Uint8 i_joyAxis, Sint16 i_joyAxisValue) {
 }
 
 XMKey::XMKey(const std::string &i_key, bool i_basicMode) {
-  size_t pos;
+  unsigned int pos;
   std::string v_current, v_rest;
 
   m_repetition = 1;

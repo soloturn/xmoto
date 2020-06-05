@@ -34,15 +34,23 @@
 #include <ode/memory.h>
 #include <ode/odemath.h>
 #include <ode/matrix.h>
+#include <ode/matrix_coop.h>
 #include <ode/timer.h>
 #include <ode/rotation.h>
 #include <ode/mass.h>
 #include <ode/misc.h>
 #include <ode/objects.h>
-#include <ode/odecpp.h>
 #include <ode/collision_space.h>
 #include <ode/collision.h>
-#include <ode/odecpp_collision.h>
+#include <ode/threading.h>
+#include <ode/threading_impl.h>
+#include <ode/cooperative.h>
 #include <ode/export-dif.h>
+#include <ode/version.h>
+
+#ifdef __cplusplus
+# include <ode/odecpp.h>
+# include <ode/odecpp_collision.h>
+#endif
 
 #endif

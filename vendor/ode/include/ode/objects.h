@@ -1,5 +1,3 @@
-
-
 /*************************************************************************
  *                                                                       *
  * Open Dynamics Engine, Copyright (C) 2001,2002 Russell L. Smith.       *
@@ -28,6 +26,7 @@
 #include <ode/common.h>
 #include <ode/mass.h>
 #include <ode/contact.h>
+#include <ode/threading.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,7 +43,6 @@ extern "C" {
  * reason to use separate worlds is to simulate systems at different rates.
  * Most applications will only need one world.
  */
-
 
 /**
  * @brief Create a new, empty world and return its ID number.
@@ -64,6 +62,24 @@ ODE_API dWorldID dWorldCreate(void);
  * @param world the identifier for the world the be destroyed.
  */
 ODE_API void dWorldDestroy (dWorldID world);
+
+
+/**
+ * @brief Set the user-data pointer
+ * @param world the world to set the data on
+ * @param data
+ * @ingroup world
+ */
+ODE_API void dWorldSetData (dWorldID world, void* data);
+
+
+/**
+ * @brief Get the user-data pointer
+ * @param world the world to set the data on
+ * @param data
+ * @ingroup world
+ */
+ODE_API void* dWorldGetData (dWorldID world);
 
 
 /**
@@ -118,6 +134,43 @@ ODE_API void dWorldSetCFM (dWorldID, dReal cfm);
 ODE_API dReal dWorldGetCFM (dWorldID);
 
 
+#define dWORLDSTEP_THREADCOUNT_UNLIMITED	dTHREADING_THREAD_COUNT_UNLIMITED
+
+/**
+ * @brief Set maximum threads to be used for island stepping
+ *
+ * The actual number of threads that is going to be used will be the minimum
+ * of this limit and number of threads in the threading pool. By default 
+ * there is no limit (@c dWORLDSTEP_THREADCOUNT_UNLIMITED).
+ *
+ * @warning
+ * WARNING! Running island stepping in multiple threads requires allocating 
+ * individual stepping memory buffer for each of those threads. The size of buffers
+ * allocated is the size needed to handle the largest island in the world.
+ *
+ * Note: Setting a limit for island stepping does not affect threading at lower
+ * levels in stepper functions. The sub-calls scheduled from them can be executed
+ * in as many threads as there are available in the pool.
+ *
+ * @param w The world affected
+ * @param count Thread count limit value for island stepping
+ * @ingroup world
+ * @see dWorldGetStepIslandsProcessingMaxThreadCount
+ */
+ODE_API void dWorldSetStepIslandsProcessingMaxThreadCount(dWorldID w, unsigned count);
+/**
+ * @brief Get maximum threads that are allowed to be used for island stepping.
+ *
+ * Please read commentaries to @c dWorldSetStepIslandsProcessingMaxThreadCount for 
+ * important information regarding the value returned.
+ *
+ * @param w The world queried
+ * @returns Current thread count limit value for island stepping
+ * @ingroup world
+ * @see dWorldSetStepIslandsProcessingMaxThreadCount
+ */
+ODE_API unsigned dWorldGetStepIslandsProcessingMaxThreadCount(dWorldID w);
+
 /**
  * @brief Set the world to use shared working memory along with another world.
  *
@@ -142,6 +195,11 @@ ODE_API dReal dWorldGetCFM (dWorldID);
  * With sharing working memory worlds also automatically share memory reservation 
  * policy and memory manager. Thus, these parameters need to be customized for
  * initial world to be used as sharing source only.
+ *
+ * If worlds share working memory they must also use compatible threading implementations
+ * (i.e. it is illegal for one world to perform stepping with self-threaded implementation
+ * when the other world is assigned a multi-threaded implementation). 
+ * For more information read section about threading approaches in ODE.
  *
  * Failure result status means a memory allocation failure.
  *
@@ -179,6 +237,7 @@ ODE_API int dWorldUseSharedWorkingMemory(dWorldID w, dWorldID from_world/*=NULL*
  */
 ODE_API void dWorldCleanupWorkingMemory(dWorldID w);
 
+
 #define dWORLDSTEP_RESERVEFACTOR_DEFAULT    1.2f
 #define dWORLDSTEP_RESERVESIZE_DEFAULT      65536U
 
@@ -201,7 +260,7 @@ ODE_API void dWorldCleanupWorkingMemory(dWorldID w);
 typedef struct
 {
   unsigned struct_size;
-  float reserve_factor; // Use float as precision does not matter here
+  float reserve_factor; /* Use float as precision does not matter here*/
   unsigned reserve_minimum;
 
 } dWorldStepReserveInfo;
@@ -256,9 +315,9 @@ ODE_API int dWorldSetStepMemoryReservationPolicy(dWorldID w, const dWorldStepRes
 typedef struct 
 {
   unsigned struct_size;
-  void *(*alloc_block)(size_t block_size);
-  void *(*shrink_block)(void *block_pointer, size_t block_current_size, size_t block_smaller_size);
-  void (*free_block)(void *block_pointer, size_t block_current_size);
+  void *(*alloc_block)(dsizeint block_size);
+  void *(*shrink_block)(void *block_pointer, dsizeint block_current_size, dsizeint block_smaller_size);
+  void (*free_block)(void *block_pointer, dsizeint block_current_size);
 
 } dWorldStepMemoryFunctionsInfo;
 
@@ -287,6 +346,22 @@ typedef struct
 * @see dWorldUseSharedWorkingMemory
 */
 ODE_API int dWorldSetStepMemoryManager(dWorldID w, const dWorldStepMemoryFunctionsInfo *memfuncs);
+
+/**
+ * @brief Assign threading implementation to be used for [quick]stepping the world.
+ *
+ * @warning It is not recommended to assign the same threading implementation to
+ * different worlds if they are going to be called in parallel. In particular this
+ * makes resources preallocation for threaded calls to lose its sense. 
+ * Built-in threading implementation is likely to crash if misused this way.
+ * 
+ * @param w The world to change threading implementation for.
+ * @param functions_info Pointer to threading functions structure
+ * @param threading_impl ID of threading implementation object
+ * 
+ * @ingroup world
+ */
+ODE_API void dWorldSetStepThreadingImplementation(dWorldID w, const dThreadingFunctionsInfo *functions_info, dThreadingImplementationID threading_impl);
 
 /**
  * @brief Step the world.
@@ -480,60 +555,32 @@ ODE_API dReal dWorldGetContactSurfaceLayer (dWorldID);
  */
 
 /**
- * @brief Get auto disable linear threshold for newly created bodies.
+ * @brief Get auto disable linear average threshold for newly created bodies.
  * @ingroup disable
  * @return the threshold
  */
 ODE_API dReal dWorldGetAutoDisableLinearThreshold (dWorldID);
 
 /**
- * @brief Set auto disable linear threshold for newly created bodies.
- * @param linear_threshold default is 0.01
- * @ingroup disable
- */
-ODE_API void  dWorldSetAutoDisableLinearThreshold (dWorldID, dReal linear_threshold);
-
-/**
- * @brief Get auto disable angular threshold for newly created bodies.
- * @ingroup disable
- * @return the threshold
- */
-ODE_API dReal dWorldGetAutoDisableAngularThreshold (dWorldID);
-
-/**
- * @brief Set auto disable angular threshold for newly created bodies.
- * @param linear_threshold default is 0.01
- * @ingroup disable
- */
-ODE_API void dWorldSetAutoDisableAngularThreshold (dWorldID, dReal angular_threshold);
-
-/**
- * @brief Get auto disable linear average threshold for newly created bodies.
- * @ingroup disable
- * @return the threshold
- */
-ODE_API dReal dWorldGetAutoDisableLinearAverageThreshold (dWorldID);
-
-/**
  * @brief Set auto disable linear average threshold for newly created bodies.
  * @param linear_average_threshold default is 0.01
  * @ingroup disable
  */
-ODE_API void  dWorldSetAutoDisableLinearAverageThreshold (dWorldID, dReal linear_average_threshold);
+ODE_API void  dWorldSetAutoDisableLinearThreshold (dWorldID, dReal linear_average_threshold);
 
 /**
  * @brief Get auto disable angular average threshold for newly created bodies.
  * @ingroup disable
  * @return the threshold
  */
-ODE_API dReal dWorldGetAutoDisableAngularAverageThreshold (dWorldID);
+ODE_API dReal dWorldGetAutoDisableAngularThreshold (dWorldID);
 
 /**
  * @brief Set auto disable angular average threshold for newly created bodies.
  * @param linear_average_threshold default is 0.01
  * @ingroup disable
  */
-ODE_API void dWorldSetAutoDisableAngularAverageThreshold (dWorldID, dReal angular_average_threshold);
+ODE_API void dWorldSetAutoDisableAngularThreshold (dWorldID, dReal angular_average_threshold);
 
 /**
  * @brief Get auto disable sample count for newly created bodies.
@@ -1585,22 +1632,22 @@ ODE_API dJointID dJointCreateUniversal (dWorldID, dJointGroupID);
  */
 ODE_API dJointID dJointCreatePR (dWorldID, dJointGroupID);
 
-  /**
-   * @brief Create a new joint of the PU (Prismatic and Universal) type.
-   * @ingroup joints
-   * @param dJointGroupID set to 0 to allocate the joint normally.
-   * If it is nonzero the joint is allocated in the given joint group.
-   */
-  ODE_API dJointID dJointCreatePU (dWorldID, dJointGroupID);
+/**
+ * @brief Create a new joint of the PU (Prismatic and Universal) type.
+ * @ingroup joints
+ * @param dJointGroupID set to 0 to allocate the joint normally.
+ * If it is nonzero the joint is allocated in the given joint group.
+ */
+ODE_API dJointID dJointCreatePU (dWorldID, dJointGroupID);
 
-  /**
-   * @brief Create a new joint of the Piston type.
-   * @ingroup joints
-   * @param dJointGroupID set to 0 to allocate the joint normally.
-   *                      If it is nonzero the joint is allocated in the given
-   *                      joint group.
-   */
-  ODE_API dJointID dJointCreatePiston (dWorldID, dJointGroupID);
+/**
+ * @brief Create a new joint of the Piston type.
+ * @ingroup joints
+ * @param dJointGroupID set to 0 to allocate the joint normally.
+ *                      If it is nonzero the joint is allocated in the given
+ *                      joint group.
+ */
+ODE_API dJointID dJointCreatePiston (dWorldID, dJointGroupID);
 
 /**
  * @brief Create a new joint of the fixed type.
@@ -1635,6 +1682,31 @@ ODE_API dJointID dJointCreateLMotor (dWorldID, dJointGroupID);
  * If it is nonzero the joint is allocated in the given joint group.
  */
 ODE_API dJointID dJointCreatePlane2D (dWorldID, dJointGroupID);
+
+/**
+ * @brief Create a new joint of the double ball type.
+ * @ingroup joints
+ * @param dJointGroupID set to 0 to allocate the joint normally.
+ * If it is nonzero the joint is allocated in the given joint group.
+ */
+ODE_API dJointID dJointCreateDBall (dWorldID, dJointGroupID);
+
+/**
+ * @brief Create a new joint of the double hinge type.
+ * @ingroup joints
+ * @param dJointGroupID set to 0 to allocate the joint normally.
+ * If it is nonzero the joint is allocated in the given joint group.
+ */
+ODE_API dJointID dJointCreateDHinge (dWorldID, dJointGroupID);
+
+/**
+ * @brief Create a new joint of the Transmission type.
+ * @ingroup joints
+ * @param dJointGroupID set to 0 to allocate the joint normally.
+ * If it is nonzero the joint is allocated in the given joint group.
+ */
+ODE_API dJointID dJointCreateTransmission (dWorldID, dJointGroupID);
+
 
 /**
  * @brief Destroy a joint.
@@ -1890,16 +1962,38 @@ ODE_API void dJointAddSliderForce(dJointID joint, dReal force);
 ODE_API void dJointSetHinge2Anchor (dJointID, dReal x, dReal y, dReal z);
 
 /**
- * @brief set axis
+ * @brief set both axes (optionally)
+ *
+ * This can change both axes at once avoiding transitions via invalid states
+ * while changing axes one by one and having the first changed axis coincide 
+ * with the other axis existing direction.
+ *
+ * At least one of the axes must be not NULL. If NULL is passed, the corresponding 
+ * axis retains its existing value.
+ * 
  * @ingroup joints
  */
-ODE_API void dJointSetHinge2Axis1 (dJointID, dReal x, dReal y, dReal z);
+ODE_API void dJointSetHinge2Axes (dJointID j, const dReal *axis1/*=[dSA__MAX],=NULL*/, const dReal *axis2/*=[dSA__MAX],=NULL*/);
 
 /**
  * @brief set axis
+ *
+ * Deprecated. Use @fn dJointSetHinge2Axes instead.
+ * 
  * @ingroup joints
+ * @see dJointSetHinge2Axes
  */
-ODE_API void dJointSetHinge2Axis2 (dJointID, dReal x, dReal y, dReal z);
+ODE_API_DEPRECATED ODE_API void dJointSetHinge2Axis1 (dJointID j, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set axis
+ *
+ * Deprecated. Use @fn dJointSetHinge2Axes instead.
+ * 
+ * @ingroup joints
+ * @see dJointSetHinge2Axes
+ */
+ODE_API_DEPRECATED ODE_API void dJointSetHinge2Axis2 (dJointID j, dReal x, dReal y, dReal z);
 
 /**
  * @brief set joint parameter
@@ -2065,177 +2159,177 @@ ODE_API void dJointSetPRParam (dJointID, int parameter, dReal value);
 ODE_API void dJointAddPRTorque (dJointID j, dReal torque);
 
 
-  /**
-  * @brief set anchor
-  * @ingroup joints
-  */
-  ODE_API void dJointSetPUAnchor (dJointID, dReal x, dReal y, dReal z);
+/**
+* @brief set anchor
+* @ingroup joints
+*/
+ODE_API void dJointSetPUAnchor (dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set anchor
+ * @ingroup joints
+ */
+ODE_API_DEPRECATED ODE_API void dJointSetPUAnchorDelta (dJointID, dReal x, dReal y, dReal z,
+                                                        dReal dx, dReal dy, dReal dz);
+
+/**
+ * @brief Set the PU anchor as if the 2 bodies were already at [dx, dy, dz] appart.
+ * @ingroup joints
+ *
+ * This function initialize the anchor and the relative position of each body
+ * as if the position between body1 and body2 was already the projection of [dx, dy, dz]
+ * along the Piston axis. (i.e as if the body1 was at its current position - [dx,dy,dy] when the
+ * axis is set).
+ * Ex:
+ * <PRE>
+ * dReal offset = 3;
+ * dVector3 axis;
+ * dJointGetPUAxis(jId, axis);
+ * dJointSetPUAnchor(jId, 0, 0, 0);
+ * // If you request the position you will have: dJointGetPUPosition(jId) == 0
+ * dJointSetPUAnchorOffset(jId, 0, 0, 0, axis[X]*offset, axis[Y]*offset, axis[Z]*offset);
+ * // If you request the position you will have: dJointGetPUPosition(jId) == offset
+ * </PRE>
+ * @param j The PU joint for which the anchor point will be set
+ * @param x The X position of the anchor point in world frame
+ * @param y The Y position of the anchor point in world frame
+ * @param z The Z position of the anchor point in world frame
+ * @param dx A delta to be substracted to the X position as if the anchor was set
+ *           when body1 was at current_position[X] - dx
+ * @param dx A delta to be substracted to the Y position as if the anchor was set
+ *           when body1 was at current_position[Y] - dy
+ * @param dx A delta to be substracted to the Z position as if the anchor was set
+ *           when body1 was at current_position[Z] - dz
+ */
+ODE_API void dJointSetPUAnchorOffset (dJointID, dReal x, dReal y, dReal z,
+                                     dReal dx, dReal dy, dReal dz);
+
+/**
+ * @brief set the axis for the first axis or the universal articulation
+ * @ingroup joints
+ */
+ODE_API void dJointSetPUAxis1 (dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set the axis for the second axis or the universal articulation
+ * @ingroup joints
+ */
+ODE_API void dJointSetPUAxis2 (dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set the axis for the prismatic articulation
+ * @ingroup joints
+ */
+ODE_API void dJointSetPUAxis3 (dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set the axis for the prismatic articulation
+ * @ingroup joints
+ * @note This function was added for convenience it is the same as
+ *       dJointSetPUAxis3
+ */
+ODE_API void dJointSetPUAxisP (dJointID id, dReal x, dReal y, dReal z);
+
+
+
+/**
+ * @brief set joint parameter
+ * @ingroup joints
+ *
+ * @note parameterX where X equal 2 refer to parameter for second axis of the
+ *       universal articulation
+ * @note parameterX where X equal 3 refer to parameter for prismatic
+ *       articulation
+ */
+ODE_API void dJointSetPUParam (dJointID, int parameter, dReal value);
+
+/**
+ * @brief Applies the torque about the rotoide axis of the PU joint
+ *
+ * That is, it applies a torque with specified magnitude in the direction
+ * of the rotoide axis, to body 1, and with the same magnitude but in opposite
+ * direction to body 2. This function is just a wrapper for dBodyAddTorque()}
+ * @ingroup joints
+ */
+ODE_API void dJointAddPUTorque (dJointID j, dReal torque);
+
+
+
+
+/**
+ * @brief set the joint anchor
+ * @ingroup joints
+ */
+ODE_API void dJointSetPistonAnchor (dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief Set the Piston anchor as if the 2 bodies were already at [dx,dy, dz] appart.
+ * @ingroup joints
+ *
+ * This function initialize the anchor and the relative position of each body
+ * as if the position between body1 and body2 was already the projection of [dx, dy, dz]
+ * along the Piston axis. (i.e as if the body1 was at its current position - [dx,dy,dy] when the
+ * axis is set).
+ * Ex:
+ * <PRE>
+ * dReal offset = 3;
+ * dVector3 axis;
+ * dJointGetPistonAxis(jId, axis);
+ * dJointSetPistonAnchor(jId, 0, 0, 0);
+ * // If you request the position you will have: dJointGetPistonPosition(jId) == 0
+ * dJointSetPistonAnchorOffset(jId, 0, 0, 0, axis[X]*offset, axis[Y]*offset, axis[Z]*offset);
+ * // If you request the position you will have: dJointGetPistonPosition(jId) == offset
+ * </PRE>
+ * @param j The Piston joint for which the anchor point will be set
+ * @param x The X position of the anchor point in world frame
+ * @param y The Y position of the anchor point in world frame
+ * @param z The Z position of the anchor point in world frame
+ * @param dx A delta to be substracted to the X position as if the anchor was set
+ *           when body1 was at current_position[X] - dx
+ * @param dx A delta to be substracted to the Y position as if the anchor was set
+ *           when body1 was at current_position[Y] - dy
+ * @param dx A delta to be substracted to the Z position as if the anchor was set
+ *           when body1 was at current_position[Z] - dz
+ */
+ODE_API void dJointSetPistonAnchorOffset(dJointID j, dReal x, dReal y, dReal z,
+                                         dReal dx, dReal dy, dReal dz);
 
   /**
-   * @brief set anchor
-   * @ingroup joints
-   */
-  ODE_API_DEPRECATED ODE_API void dJointSetPUAnchorDelta (dJointID, dReal x, dReal y, dReal z,
-                                                          dReal dx, dReal dy, dReal dz);
+   * @brief set the joint axis
+ * @ingroup joints
+ */
+ODE_API void dJointSetPistonAxis (dJointID, dReal x, dReal y, dReal z);
 
-  /**
-   * @brief Set the PU anchor as if the 2 bodies were already at [dx, dy, dz] appart.
-   * @ingroup joints
-   *
-   * This function initialize the anchor and the relative position of each body
-   * as if the position between body1 and body2 was already the projection of [dx, dy, dz]
-   * along the Piston axis. (i.e as if the body1 was at its current position - [dx,dy,dy] when the
-   * axis is set).
-   * Ex:
-   * <PRE>
-   * dReal offset = 3;
-   * dVector3 axis;
-   * dJointGetPUAxis(jId, axis);
-   * dJointSetPUAnchor(jId, 0, 0, 0);
-   * // If you request the position you will have: dJointGetPUPosition(jId) == 0
-   * dJointSetPUAnchorOffset(jId, 0, 0, 0, axis[X]*offset, axis[Y]*offset, axis[Z]*offset);
-   * // If you request the position you will have: dJointGetPUPosition(jId) == offset
-   * </PRE>
-   * @param j The PU joint for which the anchor point will be set
-   * @param x The X position of the anchor point in world frame
-   * @param y The Y position of the anchor point in world frame
-   * @param z The Z position of the anchor point in world frame
-   * @param dx A delta to be substracted to the X position as if the anchor was set
-   *           when body1 was at current_position[X] - dx
-   * @param dx A delta to be substracted to the Y position as if the anchor was set
-   *           when body1 was at current_position[Y] - dy
-   * @param dx A delta to be substracted to the Z position as if the anchor was set
-   *           when body1 was at current_position[Z] - dz
-   */
-  ODE_API void dJointSetPUAnchorOffset (dJointID, dReal x, dReal y, dReal z,
-                                       dReal dx, dReal dy, dReal dz);
+/**
+ * This function set prismatic axis of the joint and also set the position
+ * of the joint.
+ *
+ * @ingroup joints
+ * @param j The joint affected by this function
+ * @param x The x component of the axis
+ * @param y The y component of the axis
+ * @param z The z component of the axis
+ * @param dx The Initial position of the prismatic join in the x direction
+ * @param dy The Initial position of the prismatic join in the y direction
+ * @param dz The Initial position of the prismatic join in the z direction
+ */
+ODE_API_DEPRECATED ODE_API void dJointSetPistonAxisDelta (dJointID j, dReal x, dReal y, dReal z, dReal ax, dReal ay, dReal az);
 
-  /**
-   * @brief set the axis for the first axis or the universal articulation
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPUAxis1 (dJointID, dReal x, dReal y, dReal z);
+/**
+ * @brief set joint parameter
+ * @ingroup joints
+ */
+ODE_API void dJointSetPistonParam (dJointID, int parameter, dReal value);
 
-  /**
-   * @brief set the axis for the second axis or the universal articulation
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPUAxis2 (dJointID, dReal x, dReal y, dReal z);
-
-  /**
-   * @brief set the axis for the prismatic articulation
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPUAxis3 (dJointID, dReal x, dReal y, dReal z);
-
-  /**
-   * @brief set the axis for the prismatic articulation
-   * @ingroup joints
-   * @note This function was added for convenience it is the same as
-   *       dJointSetPUAxis3
-   */
-  ODE_API void dJointSetPUAxisP (dJointID id, dReal x, dReal y, dReal z);
-
-
-
-  /**
-   * @brief set joint parameter
-   * @ingroup joints
-   *
-   * @note parameterX where X equal 2 refer to parameter for second axis of the
-   *       universal articulation
-   * @note parameterX where X equal 3 refer to parameter for prismatic
-   *       articulation
-   */
-  ODE_API void dJointSetPUParam (dJointID, int parameter, dReal value);
-
-  /**
-   * @brief Applies the torque about the rotoide axis of the PU joint
-   *
-   * That is, it applies a torque with specified magnitude in the direction
-   * of the rotoide axis, to body 1, and with the same magnitude but in opposite
-   * direction to body 2. This function is just a wrapper for dBodyAddTorque()}
-   * @ingroup joints
-   */
-  ODE_API void dJointAddPUTorque (dJointID j, dReal torque);
-
-
-
-
-  /**
-   * @brief set the joint anchor
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPistonAnchor (dJointID, dReal x, dReal y, dReal z);
-
-  /**
-   * @brief Set the Piston anchor as if the 2 bodies were already at [dx,dy, dz] appart.
-   * @ingroup joints
-   *
-   * This function initialize the anchor and the relative position of each body
-   * as if the position between body1 and body2 was already the projection of [dx, dy, dz]
-   * along the Piston axis. (i.e as if the body1 was at its current position - [dx,dy,dy] when the
-   * axis is set).
-   * Ex:
-   * <PRE>
-   * dReal offset = 3;
-   * dVector3 axis;
-   * dJointGetPistonAxis(jId, axis);
-   * dJointSetPistonAnchor(jId, 0, 0, 0);
-   * // If you request the position you will have: dJointGetPistonPosition(jId) == 0
-   * dJointSetPistonAnchorOffset(jId, 0, 0, 0, axis[X]*offset, axis[Y]*offset, axis[Z]*offset);
-   * // If you request the position you will have: dJointGetPistonPosition(jId) == offset
-   * </PRE>
-   * @param j The Piston joint for which the anchor point will be set
-   * @param x The X position of the anchor point in world frame
-   * @param y The Y position of the anchor point in world frame
-   * @param z The Z position of the anchor point in world frame
-   * @param dx A delta to be substracted to the X position as if the anchor was set
-   *           when body1 was at current_position[X] - dx
-   * @param dx A delta to be substracted to the Y position as if the anchor was set
-   *           when body1 was at current_position[Y] - dy
-   * @param dx A delta to be substracted to the Z position as if the anchor was set
-   *           when body1 was at current_position[Z] - dz
-   */
-  ODE_API void dJointSetPistonAnchorOffset(dJointID j, dReal x, dReal y, dReal z,
-                                           dReal dx, dReal dy, dReal dz);
-
-    /**
-     * @brief set the joint axis
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPistonAxis (dJointID, dReal x, dReal y, dReal z);
-
-  /**
-   * This function set prismatic axis of the joint and also set the position
-   * of the joint.
-   *
-   * @ingroup joints
-   * @param j The joint affected by this function
-   * @param x The x component of the axis
-   * @param y The y component of the axis
-   * @param z The z component of the axis
-   * @param dx The Initial position of the prismatic join in the x direction
-   * @param dy The Initial position of the prismatic join in the y direction
-   * @param dz The Initial position of the prismatic join in the z direction
-   */
-  ODE_API_DEPRECATED ODE_API void dJointSetPistonAxisDelta (dJointID j, dReal x, dReal y, dReal z, dReal ax, dReal ay, dReal az);
-
-  /**
-   * @brief set joint parameter
-   * @ingroup joints
-   */
-  ODE_API void dJointSetPistonParam (dJointID, int parameter, dReal value);
-
-  /**
-   * @brief Applies the given force in the slider's direction.
-   *
-   * That is, it applies a force with specified magnitude, in the direction of
-   * prismatic's axis, to body1, and with the same magnitude but opposite
-   * direction to body2.  This function is just a wrapper for dBodyAddForce().
-   * @ingroup joints
-   */
-  ODE_API void dJointAddPistonForce (dJointID joint, dReal force);
+/**
+ * @brief Applies the given force in the slider's direction.
+ *
+ * That is, it applies a force with specified magnitude, in the direction of
+ * prismatic's axis, to body1, and with the same magnitude but opposite
+ * direction to body2.  This function is just a wrapper for dBodyAddForce().
+ * @ingroup joints
+ */
+ODE_API void dJointAddPistonForce (dJointID joint, dReal force);
 
 
 /**
@@ -2493,6 +2587,12 @@ ODE_API dReal dJointGetHinge2Param (dJointID, int parameter);
 ODE_API dReal dJointGetHinge2Angle1 (dJointID);
 
 /**
+ * @brief Get angle
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetHinge2Angle2 (dJointID);
+
+/**
  * @brief Get time derivative of angle
  * @ingroup joints
  */
@@ -2615,12 +2715,12 @@ ODE_API dReal dJointGetPRPositionRate (dJointID);
 
 
 /**
-   * @brief Get the PR angular position (i.e. the  twist between the 2 bodies)
-   *
-   * When the axis is set, the current position of the attached bodies is
-   * examined and that position will be the zero position.
-   * @ingroup joints
-   */
+ * @brief Get the PR angular position (i.e. the  twist between the 2 bodies)
+ *
+ * When the axis is set, the current position of the attached bodies is
+ * examined and that position will be the zero position.
+ * @ingroup joints
+ */
 ODE_API dReal dJointGetPRAngle (dJointID);
 
 /**
@@ -2651,185 +2751,185 @@ ODE_API dReal dJointGetPRParam (dJointID, int parameter);
 
     
     
-  /**
-   * @brief Get the joint anchor point, in world coordinates.
-   * @return the point on body 1. If the joint is perfectly satisfied,
-   * this will be the same as the point on body 2.
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPUAnchor (dJointID, dVector3 result);
+/**
+ * @brief Get the joint anchor point, in world coordinates.
+ * @return the point on body 1. If the joint is perfectly satisfied,
+ * this will be the same as the point on body 2.
+ * @ingroup joints
+ */
+ODE_API void dJointGetPUAnchor (dJointID, dVector3 result);
 
-  /**
-   * @brief Get the PU linear position (i.e. the prismatic's extension)
-   *
-   * When the axis is set, the current position of the attached bodies is
-   * examined and that position will be the zero position.
-   *
-   * The position is the "oriented" length between the
-   * position = (Prismatic axis) dot_product [(body1 + offset) - (body2 + anchor2)]
-   *
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUPosition (dJointID);
+/**
+ * @brief Get the PU linear position (i.e. the prismatic's extension)
+ *
+ * When the axis is set, the current position of the attached bodies is
+ * examined and that position will be the zero position.
+ *
+ * The position is the "oriented" length between the
+ * position = (Prismatic axis) dot_product [(body1 + offset) - (body2 + anchor2)]
+ *
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUPosition (dJointID);
 
-  /**
-   * @brief Get the PR linear position's time derivative
-   *
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUPositionRate (dJointID);
+/**
+ * @brief Get the PR linear position's time derivative
+ *
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUPositionRate (dJointID);
 
-  /**
-   * @brief Get the first axis of the universal component of the joint
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPUAxis1 (dJointID, dVector3 result);
+/**
+ * @brief Get the first axis of the universal component of the joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetPUAxis1 (dJointID, dVector3 result);
 
-  /**
-   * @brief Get the second axis of the Universal component of the joint
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPUAxis2 (dJointID, dVector3 result);
+/**
+ * @brief Get the second axis of the Universal component of the joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetPUAxis2 (dJointID, dVector3 result);
 
-  /**
-   * @brief Get the prismatic axis
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPUAxis3 (dJointID, dVector3 result);
+/**
+ * @brief Get the prismatic axis
+ * @ingroup joints
+ */
+ODE_API void dJointGetPUAxis3 (dJointID, dVector3 result);
 
-  /**
-   * @brief Get the prismatic axis
-   * @ingroup joints
-   *
-   * @note This function was added for convenience it is the same as
-   *       dJointGetPUAxis3
-   */
-  ODE_API void dJointGetPUAxisP (dJointID id, dVector3 result);
-
-
+/**
+ * @brief Get the prismatic axis
+ * @ingroup joints
+ *
+ * @note This function was added for convenience it is the same as
+ *       dJointGetPUAxis3
+ */
+ODE_API void dJointGetPUAxisP (dJointID id, dVector3 result);
 
 
-  /**
-   * @brief Get both angles at the same time.
-   * @ingroup joints
-   *
-   * @param joint   The Prismatic universal joint for which we want to calculate the angles
-   * @param angle1  The angle between the body1 and the axis 1
-   * @param angle2  The angle between the body2 and the axis 2
-   *
-   * @note This function combine dJointGetPUAngle1 and dJointGetPUAngle2 together
-   *       and try to avoid redundant calculation
-   */
-  ODE_API void dJointGetPUAngles (dJointID, dReal *angle1, dReal *angle2);
-
-  /**
-   * @brief Get angle
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUAngle1 (dJointID);
-
-  /**
-   * @brief * @brief Get time derivative of angle1
-   *
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUAngle1Rate (dJointID);
 
 
-  /**
-   * @brief Get angle
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUAngle2 (dJointID);
+/**
+ * @brief Get both angles at the same time.
+ * @ingroup joints
+ *
+ * @param joint   The Prismatic universal joint for which we want to calculate the angles
+ * @param angle1  The angle between the body1 and the axis 1
+ * @param angle2  The angle between the body2 and the axis 2
+ *
+ * @note This function combine dJointGetPUAngle1 and dJointGetPUAngle2 together
+ *       and try to avoid redundant calculation
+ */
+ODE_API void dJointGetPUAngles (dJointID, dReal *angle1, dReal *angle2);
 
-  /**
-   * @brief * @brief Get time derivative of angle2
-   *
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPUAngle2Rate (dJointID);
+/**
+ * @brief Get angle
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUAngle1 (dJointID);
+
+/**
+ * @brief * @brief Get time derivative of angle1
+ *
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUAngle1Rate (dJointID);
+
+
+/**
+ * @brief Get angle
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUAngle2 (dJointID);
+
+/**
+ * @brief * @brief Get time derivative of angle2
+ *
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPUAngle2Rate (dJointID);
 
   /**
    * @brief get joint parameter
    * @ingroup joints
    */
-  ODE_API dReal dJointGetPUParam (dJointID, int parameter);
+ODE_API dReal dJointGetPUParam (dJointID, int parameter);
 
 
 
 
 
 /**
-   * @brief Get the Piston linear position (i.e. the piston's extension)
-   *
-   * When the axis is set, the current position of the attached bodies is
-   * examined and that position will be the zero position.
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPistonPosition (dJointID);
-
-  /**
-   * @brief Get the piston linear position's time derivative.
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPistonPositionRate (dJointID);
+ * @brief Get the Piston linear position (i.e. the piston's extension)
+ *
+ * When the axis is set, the current position of the attached bodies is
+ * examined and that position will be the zero position.
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPistonPosition (dJointID);
 
 /**
-   * @brief Get the Piston angular position (i.e. the  twist between the 2 bodies)
-   *
-   * When the axis is set, the current position of the attached bodies is
-   * examined and that position will be the zero position.
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPistonAngle (dJointID);
+ * @brief Get the piston linear position's time derivative.
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPistonPositionRate (dJointID);
 
-  /**
-   * @brief Get the piston angular position's time derivative.
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPistonAngleRate (dJointID);
+/**
+ * @brief Get the Piston angular position (i.e. the  twist between the 2 bodies)
+ *
+ * When the axis is set, the current position of the attached bodies is
+ * examined and that position will be the zero position.
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPistonAngle (dJointID);
 
-
-  /**
-   * @brief Get the joint anchor
-   *
-   * This returns the point on body 1. If the joint is perfectly satisfied,
-   * this will be the same as the point on body 2 in direction perpendicular
-   * to the prismatic axis.
-   *
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPistonAnchor (dJointID, dVector3 result);
-
-  /**
-   * @brief Get the joint anchor w.r.t. body 2
-   *
-   * This returns the point on body 2. You can think of a Piston
-   * joint as trying to keep the result of dJointGetPistonAnchor() and
-   * dJointGetPistonAnchor2() the same in the direction perpendicular to the
-   * pirsmatic axis. If the joint is perfectly satisfied,
-   * this function will return the same value as dJointGetPistonAnchor() to
-   * within roundoff errors. dJointGetPistonAnchor2() can be used, along with
-   * dJointGetPistonAnchor(), to see how far the joint has come apart.
-   *
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPistonAnchor2 (dJointID, dVector3 result);
-
-  /**
-   * @brief Get the prismatic axis (This is also the rotoide axis.
-   * @ingroup joints
-   */
-  ODE_API void dJointGetPistonAxis (dJointID, dVector3 result);
-
-  /**
-   * @brief get joint parameter
-   * @ingroup joints
-   */
-  ODE_API dReal dJointGetPistonParam (dJointID, int parameter);
+/**
+ * @brief Get the piston angular position's time derivative.
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPistonAngleRate (dJointID);
 
 
-  /**
+/**
+ * @brief Get the joint anchor
+ *
+ * This returns the point on body 1. If the joint is perfectly satisfied,
+ * this will be the same as the point on body 2 in direction perpendicular
+ * to the prismatic axis.
+ *
+ * @ingroup joints
+ */
+ODE_API void dJointGetPistonAnchor (dJointID, dVector3 result);
+
+/**
+ * @brief Get the joint anchor w.r.t. body 2
+ *
+ * This returns the point on body 2. You can think of a Piston
+ * joint as trying to keep the result of dJointGetPistonAnchor() and
+ * dJointGetPistonAnchor2() the same in the direction perpendicular to the
+ * pirsmatic axis. If the joint is perfectly satisfied,
+ * this function will return the same value as dJointGetPistonAnchor() to
+ * within roundoff errors. dJointGetPistonAnchor2() can be used, along with
+ * dJointGetPistonAnchor(), to see how far the joint has come apart.
+ *
+ * @ingroup joints
+ */
+ODE_API void dJointGetPistonAnchor2 (dJointID, dVector3 result);
+
+/**
+ * @brief Get the prismatic axis (This is also the rotoide axis.
+ * @ingroup joints
+ */
+ODE_API void dJointGetPistonAxis (dJointID, dVector3 result);
+
+/**
+ * @brief get joint parameter
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetPistonParam (dJointID, int parameter);
+
+
+/**
  * @brief Get the number of angular axes that will be controlled by the
  * AMotor.
  * @param num can range from 0 (which effectively deactivates the
@@ -2932,6 +3032,327 @@ ODE_API dReal dJointGetLMotorParam (dJointID, int parameter);
  * @ingroup joints
  */
 ODE_API dReal dJointGetFixedParam (dJointID, int parameter);
+
+
+/**
+ * @brief get the contact point of the first wheel of the Transmission joint.
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionContactPoint1(dJointID, dVector3 result);
+
+/**
+ * @brief get contact point of the second wheel of the Transmission joint.
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionContactPoint2(dJointID, dVector3 result);
+ 
+/**
+ * @brief set the first axis for the Transmission joint
+ * @remarks This is the axis around which the first body is allowed to
+ * revolve and is attached to it.  It is given in global coordinates
+ * and can only be set explicitly in intersecting-axes mode.  For the
+ * parallel-axes and chain modes which share one common axis of
+ * revolution for both gears dJointSetTransmissionAxis should be used.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionAxis1(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get first axis for the Transmission joint
+ * @remarks In parallel-axes and chain mode the common axis with
+ * respect to the first body is returned.  If the joint constraint is
+ * satisfied it should be the same as the axis return with
+ * dJointGetTransmissionAxis2 or dJointGetTransmissionAxis.
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionAxis1(dJointID, dVector3 result);
+ 
+/**
+ * @brief set second axis for the Transmission joint
+ * @remarks This is the axis around which the second body is allowed
+ * to revolve and is attached to it.  It is given in global
+ * coordinates and can only be set explicitly in intersecting-axes
+ * mode.  For the parallel-axes and chain modes which share one common
+ * axis of revolution for both gears dJointSetTransmissionAxis should
+ * be used.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionAxis2(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get second axis for the Transmission joint
+ * @remarks In parallel-axes and chain mode the common axis with
+ * respect to the second body is returned.  If the joint constraint is
+ * satisfied it should be the same as the axis return with
+ * dJointGetTransmissionAxis1 or dJointGetTransmissionAxis.
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionAxis2(dJointID, dVector3 result);
+ 
+/**
+ * @brief set the first anchor for the Transmission joint
+ * @remarks This is the point of attachment of the wheel on the
+ * first body.  It is given in global coordinates.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionAnchor1(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get the first anchor of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionAnchor1(dJointID, dVector3 result);
+ 
+/**
+ * @brief set the second anchor for the Transmission joint
+ * @remarks This is the point of attachment of the wheel on the
+ * second body.  It is given in global coordinates.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionAnchor2(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get the second anchor for the Transmission joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionAnchor2(dJointID, dVector3 result);
+
+/**
+ * @brief set a Transmission joint parameter
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionParam(dJointID, int parameter, dReal value);
+
+/**
+ * @brief get a Transmission joint parameter
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionParam(dJointID, int parameter);
+
+/**
+ * @brief set the Transmission joint mode
+ * @remarks The mode can be one of dTransmissionParallelAxes,
+ * dTransmissionIntersectingAxes and dTransmissionChainDrive simulating a
+ * set of parallel-axes gears, intersecting-axes beveled gears or
+ * chain and sprockets respectively.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionMode( dJointID j, int mode );
+
+/**
+ * @brief get the Transmission joint mode
+ * @ingroup joints
+ */
+ODE_API int dJointGetTransmissionMode( dJointID j );
+
+/**
+ * @brief set the Transmission ratio
+ * @remarks This is the ratio of the angular speed of the first gear
+ * to that of the second gear.  It can only be set explicitly in
+ * parallel-axes mode.  In intersecting-axes mode the ratio is defined
+ * implicitly by the initial configuration of the wheels and in chain
+ * mode it is defined implicitly be the wheel radii.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionRatio( dJointID j, dReal ratio );
+
+/**
+ * @brief get the Transmission joint ratio
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionRatio( dJointID j );
+
+/**
+ * @brief set the common axis for both wheels of the Transmission joint
+ * @remarks This sets the common axis of revolution for both wheels
+ * and should only be used in parallel-axes or chain mode.  For
+ * intersecting-axes mode where each wheel axis needs to be specified
+ * individually dJointSetTransmissionAxis1 and
+ * dJointSetTransmissionAxis2 should be used.  The axis is given in
+ * global coordinates
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionAxis( dJointID j, dReal x, dReal y, dReal z );
+
+/**
+ * @brief get the common axis for both wheels of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetTransmissionAxis( dJointID j, dVector3 result );
+
+/**
+ * @brief get the phase, that is the traversed angle for the first
+ * wheel of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionAngle1( dJointID j );
+
+/**
+ * @brief get the phase, that is the traversed angle for the second
+ * wheel of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionAngle2( dJointID j );
+
+/**
+ * @brief get the radius of the first wheel of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionRadius1( dJointID j );
+
+/**
+ * @brief get the radius of the second wheel of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionRadius2( dJointID j );
+
+/**
+ * @brief set the radius of the first wheel of the Transmission joint
+ * @remarks The wheel radii can only be set explicitly in chain mode.
+ * In the other modes they're defined implicitly by the initial
+ * configuration and ratio of the wheels.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionRadius1( dJointID j, dReal radius );
+
+/**
+ * @brief set the radius of the second wheel of the Transmission joint
+ * @remarks The wheel radii can only be set explicitly in chain mode.
+ * In the other modes they're defined implicitly by the initial
+ * configuration and ratio of the wheels.
+ * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionRadius2( dJointID j, dReal radius );
+
+/**
+ * @brief get the backlash of the Transmission joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetTransmissionBacklash( dJointID j );
+
+/**
+ * @brief set the backlash of the Transmission joint
+ * @remarks Backlash is the clearance in the mesh of the wheels of the
+ * transmission and is defined as the maximum distance that the
+ * geometric contact point can travel without any actual contact or
+ * transfer of power between the wheels.  This can be converted in
+ * degrees of revolution for each wheel by dividing by the wheel's
+ * radius.  To further illustrate this consider the situation where a
+ * wheel of radius r_1 is driving another wheel of radius r_2 and
+ * there is an amount of backlash equal to b in their mesh.  If the
+ * driving wheel were to instantaneously stop there would be no
+ * contact and hence the driven wheel would continue to turn for
+ * another b / r_2 radians until all the backlash in the mesh was take
+ * up and contact restored with the relationship of driving and driven
+ * wheel reversed.  The backlash is therefore given in untis of
+ * length.
+  * @ingroup joints
+ */
+ODE_API void dJointSetTransmissionBacklash( dJointID j, dReal backlash );
+
+/**
+ * @brief set anchor1 for double ball joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDBallAnchor1(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set anchor2 for double ball joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDBallAnchor2(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get anchor1 from double ball joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetDBallAnchor1(dJointID, dVector3 result);
+
+/**
+ * @brief get anchor2 from double ball joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetDBallAnchor2(dJointID, dVector3 result);
+
+/**
+ * @brief get the target distance from double ball joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetDBallDistance(dJointID);
+
+/**
+ * @brief set the target distance for the double ball joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDBallDistance(dJointID, dReal dist);
+
+/**
+ * @brief set double ball joint parameter
+ * @ingroup joints
+ */
+ODE_API void dJointSetDBallParam(dJointID, int parameter, dReal value);
+
+/**
+ * @brief get double ball joint parameter
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetDBallParam(dJointID, int parameter);
+
+/**
+ * @brief set axis for double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDHingeAxis(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get axis for double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetDHingeAxis(dJointID, dVector3 result);
+
+/**
+ * @brief set anchor1 for double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDHingeAnchor1(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief set anchor2 for double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointSetDHingeAnchor2(dJointID, dReal x, dReal y, dReal z);
+
+/**
+ * @brief get anchor1 from double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetDHingeAnchor1(dJointID, dVector3 result);
+
+/**
+ * @brief get anchor2 from double hinge joint
+ * @ingroup joints
+ */
+ODE_API void dJointGetDHingeAnchor2(dJointID, dVector3 result);
+
+/**
+ * @brief get the set distance from double hinge joint
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetDHingeDistance(dJointID);
+
+/**
+ * @brief set double hinge joint parameter
+ * @ingroup joints
+ */
+ODE_API void dJointSetDHingeParam(dJointID, int parameter, dReal value);
+
+/**
+ * @brief get double hinge joint parameter
+ * @ingroup joints
+ */
+ODE_API dReal dJointGetDHingeParam(dJointID, int parameter);
+
+
 
 
 /**

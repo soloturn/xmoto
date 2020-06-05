@@ -8,12 +8,15 @@ add_library(ode STATIC
   include/ode/common.h
   include/ode/compatibility.h
   include/ode/contact.h
+  include/ode/cooperative.h
   include/ode/error.h
   include/ode/export-dif.h
   include/ode/mass.h
   include/ode/matrix.h
+  include/ode/matrix_coop.h
   include/ode/memory.h
   include/ode/misc.h
+  include/ode/precision.h
   include/ode/objects.h
   include/ode/odeconfig.h
   include/ode/odecpp_collision.h
@@ -24,11 +27,15 @@ add_library(ode STATIC
   include/ode/odemath_legacy.h
   include/ode/rotation.h
   include/ode/timer.h
+  include/ode/threading.h
+  include/ode/threading_impl.h
+  include/ode/version.h
 
   src/array.cpp
   src/array.h
   src/box.cpp
   src/capsule.cpp
+  src/collision_convex_trimesh.cpp
   src/collision_cylinder_box.cpp
   src/collision_cylinder_plane.cpp
   src/collision_cylinder_sphere.cpp
@@ -48,27 +55,46 @@ add_library(ode STATIC
   src/collision_trimesh_ccylinder.cpp
   src/collision_trimesh_colliders.h
   src/collision_trimesh_disabled.cpp
-  src/collision_trimesh_distance.cpp
   src/collision_trimesh_gimpact.cpp
+  src/collision_trimesh_gimpact.h
+  src/collision_trimesh_internal.cpp
   src/collision_trimesh_internal.h
+  src/collision_trimesh_internal_impl.h
   src/collision_trimesh_opcode.cpp
+  src/collision_trimesh_opcode.h
   src/collision_trimesh_plane.cpp
   src/collision_trimesh_ray.cpp
   src/collision_trimesh_sphere.cpp
   src/collision_trimesh_trimesh.cpp
-  src/collision_trimesh_trimesh_new.cpp
+  src/collision_trimesh_trimesh_old.cpp
   src/collision_util.cpp
   src/collision_util.h
-  src/config.h
+  src/common.h
   src/config.h.origin
   src/convex.cpp
+  src/coop_matrix_types.h
   src/cylinder.cpp
+  src/default_threading.cpp
+  src/default_threading.h
   src/error.cpp
+  src/error.h
   src/export-dif.cpp
-  src/fastdot.c
-  src/fastldlt.c
-  src/fastlsolve.c
-  src/fastltsolve.c
+  src/fastdot.cpp
+  src/fastdot_impl.h
+  src/fastldltfactor.cpp
+  src/fastldltfactor_impl.h
+  src/fastldltsolve.cpp
+  src/fastldltsolve_impl.h
+  src/fastlsolve.cpp
+  src/fastlsolve_impl.h
+  src/fastltsolve.cpp
+  src/fastltsolve_impl.h
+  src/fastvecscale.cpp
+  src/fastvecscale_impl.h
+  src/gimpact_contact_export_helper.cpp
+  src/gimpact_contact_export_helper.h
+  src/gimpact_gim_contact_accessor.h
+  src/gimpact_plane_contact_accessor.h
   src/heightfield.cpp
   src/heightfield.h
 
@@ -78,6 +104,10 @@ add_library(ode STATIC
   src/joints/ball.h
   src/joints/contact.cpp
   src/joints/contact.h
+  src/joints/dball.cpp
+  src/joints/dball.h
+  src/joints/dhinge.cpp
+  src/joints/dhinge.h
   src/joints/fixed.cpp
   src/joints/fixed.h
   src/joints/hinge2.cpp
@@ -102,6 +132,8 @@ add_library(ode STATIC
   src/joints/pu.h
   src/joints/slider.cpp
   src/joints/slider.h
+  src/joints/transmission.cpp
+  src/joints/transmission.h
   src/joints/universal.cpp
   src/joints/universal.h
 
@@ -111,15 +143,18 @@ add_library(ode STATIC
   src/mat.cpp
   src/mat.h
   src/matrix.cpp
+  src/matrix.h
   src/memory.cpp
   src/misc.cpp
   src/nextafterf.c
+  src/objects.cpp
   src/objects.h
   src/obstack.cpp
   src/obstack.h
   src/ode.cpp
   src/odeinit.cpp
   src/odemath.cpp
+  src/odemath.h
   src/odeou.cpp
   src/odeou.h
   src/odetls.cpp
@@ -128,11 +163,29 @@ add_library(ode STATIC
   src/quickstep.cpp
   src/quickstep.h
   src/ray.cpp
+  src/resource_control.cpp
+  src/resource_control.h
   src/rotation.cpp
+  src/simple_cooperative.cpp
+  src/simple_cooperative.h
   src/sphere.cpp
   src/step.cpp
   src/step.h
+  src/threaded_solver_ldlt.h
+  src/threading_atomics_provs.h
+  src/threading_base.cpp
+  src/threading_base.h
+  src/threading_fake_sync.h
+  src/threading_impl.cpp
+  src/threading_impl.h
+  src/threading_impl_posix.h
+  src/threading_impl_templates.h
+  src/threading_impl_win.h
+  src/threading_pool_posix.cpp
+  src/threading_pool_win.cpp
+  src/threadingutils.h
   src/timer.cpp
+  src/typedefs.h
   src/util.cpp
   src/util.h
 )
